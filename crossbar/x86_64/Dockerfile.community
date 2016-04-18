@@ -2,46 +2,46 @@ FROM python:3-alpine
 
 MAINTAINER The Crossbar.io Project <support@crossbario.com>
 
-ENV HOME /node
-ENV DEBIAN_FRONTEND noninteractive
-ENV PYTHONUNBUFFERED 1
-ENV PATH /usr/local/bin:$PATH
-ENV CROSSBAR_VERSION 0.13.0
-
-RUN apk --update upgrade && \
-    apk add --virtual runtime-dependencies \
-                            py-pip && \
-    apk add --virtual build-dependencies \
-                            git \
-                            build-base \
-                            python-dev \
-                            libffi-dev \
-                            openssl-dev \
-                            linux-headers && \
-     pip install -U pip && \
-     pip install git+https://github.com/dvarrazzo/py-setproctitle.git@fix-44 && \
-     pip install crossbar==${CROSSBAR_VERSION} && \
-
-     #add our user and group
-     addgroup crossbar && \
-     adduser -D -h /node -G crossbar -g "Crossbar.io Service" crossbar && \
-
-     #clean up and shrink the image size
-     apk del build-dependencies && \
-            rm -rf /var/cache/* && \
-            rm -rf /tmp/* && \
-     crossbar version
-
-
 # initialize a Crossbar.io node
-COPY ./node/ /node/
-RUN chown -R crossbar:crossbar /node
+ENV PATH /usr/local/bin:$PATH
+ENV CROSSBAR_VERSION 0.13.2
+ENV PYTHONUNBUFFERED 1
+
+ENV HOME /node
+WORKDIR /node
+ADD /node .
+
+RUN chmod +x entrypoint.sh \
+
+    # install dependencies
+    && apk --update upgrade \
+    && apk --no-cache add py-pip su-exec \
+    && apk --no-cache add --virtual build-dependencies \
+        git \
+        build-base \
+        python-dev \
+        libffi-dev \
+        openssl-dev \
+        linux-headers \
+
+    #Pip Installations
+    && pip install -U pip \
+    && pip install git+https://github.com/dvarrazzo/py-setproctitle.git@fix-44 \
+    && pip install crossbar==${CROSSBAR_VERSION} \
+
+    #clean up and shrink the image size
+    && apk del build-dependencies \
+    && rm -rf /var/cache/* /tmp/* /etc/ssl /usr/share/man /var/cache/apk/* /root/.npm /root/.node-gyp /root/.gnupg \
+             /usr/lib/node_modules/npm/man /usr/lib/node_modules/npm/doc /usr/lib/node_modules/npm/html \
+
+    #add a default user for use with the entrypoint.sh, NOTE this can be overwritten with a custom entrypoint.sh (Important with volumes which may be accessed by other containers)
+    && addgroup crossbar && adduser -D -G crossbar -g "Crossbar.io Service" crossbar \
+
+    #Test if everything installed properly
+    && crossbar version
+
+EXPOSE 8080 8000
 
 # entrypoint for the Docker image is the Crossbar.io executable
-WORKDIR /node
-
-# run under this user, and expose default port
-# FIXME: running under "crossbar" breaks!
-#USER crossbar
-EXPOSE 8080 8000
-ENTRYPOINT ["crossbar", "start", "--cbdir", "/node/.crossbar"]
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["crossbar", "start", "--cbdir", "/node/.crossbar"]
